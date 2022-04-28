@@ -67,9 +67,10 @@ class Game {
 	me: Player;
 	enemy: Player;
 	entities: Entity[];
+	heroes: Entity[];
 	turns: number;
 
-	constructor(baseX: number, baseY: number, private heroes: number) {
+	constructor(baseX: number, baseY: number, private nheroes: number) {
 		this.me = new Player(baseX, baseY, 3, 0);
 		this.enemy = new Player(
 			baseX === 0 ? 17630 : 0,
@@ -78,6 +79,7 @@ class Game {
 			0
 		);
 		this.turns = 0;
+		this.heroes = [];
 	}
 
 	newTurn = (
@@ -86,11 +88,12 @@ class Game {
 		enemyHealth: number,
 		enemyMana: number
 	) => {
+		this.heroes = [];
 		this.me.setHealth(health);
 		this.me.setMana(mana);
 		this.enemy.setHealth(enemyHealth);
 		this.enemy.setMana(enemyMana);
-		// this.entities = [];
+		this.entities = [];
 		if (this.entities != undefined)
 			this.entities.forEach((e, i) => {
 				e.isalive = false;
@@ -117,11 +120,9 @@ class Game {
 	}
 	
 	addEntity = (entity: Entity) => {
-		var found = this.entities.find(e => {
-			e.id == entity.id;
-		})
+		var found = this.entities[entity.id];
 		if (found == undefined)
-			this.entities.push(entity);
+			this.entities[entity.id] = entity;
 		else
 		{
 			// found = {...entity}; // Error due to private me property
@@ -138,6 +139,30 @@ class Game {
 			found.distanceFromMyBase = entity.distanceFromMyBase;
 		}
 	};
+
+	addHeroes = (entity: Entity) => {
+		var found = this.heroes.find(e => {
+			e.id == entity.id;
+		})
+		if (found == undefined)
+			this.heroes.push(entity);
+		else
+		{
+			// found = {...entity}; // Error due to private me property
+			found.x = entity.x;
+			found.y = entity.y;
+			found.shieldLife = entity.shieldLife;
+			found.isControlled = entity.isControlled;
+			found.health = entity.health;
+			found.vx = entity.vx;
+			found.vy = entity.vy;
+			found.nearBase = entity.nearBase;
+			found.threatFor = entity.threatFor;
+			found.isalive = entity.isalive;
+			found.distanceFromMyBase = entity.distanceFromMyBase;
+		}
+	};
+
 
 	nextAction = (hero: number): string => {
 		// In the first league: MOVE <x> <y> | WAIT; In later leagues: | SPELL <spellParams>;
@@ -169,29 +194,32 @@ while (true) {
 	const entityCount: number = Number(rl()); // Amount of heros and monsters you can see
 	for (let i = 0; i < entityCount; i++) {
 		const inputs: number[] = rl().split(" ").map(Number);
-		game.addEntity(
-			new Entity(
-				inputs[0], // Unique identifier
-				inputs[1], // 0=monster, 1=your hero, 2=opponent hero
-				inputs[2], // Position of this entity
-				inputs[3],
-				inputs[4], // Ignore for this league; Count down until shield spell fades
-				inputs[5], // Ignore for this league; Equals 1 when this entity is under a control spell
-				inputs[6], // Remaining health of this monster
-				inputs[7], // Trajectory of this monster
-				inputs[8],
-				inputs[9], // 0=monster with no target yet, 1=monster targeting a base
-				inputs[10], // Given this monster's trajectory, is it a threat to 1=your base, 2=your opponent's base, 0=neither
-				true,
-				game.me
-			)
+		var entity = new Entity(
+			inputs[0], // Unique identifier
+			inputs[1], // 0=monster, 1=your hero, 2=opponent hero
+			inputs[2] + inputs[7], // Position of this entity
+			inputs[3] + inputs[8],
+			inputs[4], // Ignore for this league; Count down until shield spell fades
+			inputs[5], // Ignore for this league; Equals 1 when this entity is under a control spell
+			inputs[6], // Remaining health of this monster
+			inputs[7], // Trajectory of this monster
+			inputs[8],
+			inputs[9], // 0=monster with no target yet, 1=monster targeting a base
+			inputs[10], // Given this monster's trajectory, is it a threat to 1=your base, 2=your opponent's base, 0=neither
+			true,
+			game.me
 		);
+		if (entity.type == entity.TYPE_MONSTER)
+			game.addEntity(entity);
+		else
+			game.addHeroes(entity);
+		console.error(entity.id);
 	}
 
 	for (let i = 0; i < heroesPerPlayer; i++) {
 		var min:Entity = null;
 		game.entities.forEach((value, index) => {
-			if (value.type == 0 && value.isDangerousForMyBase)
+			if (value.type == 0 && value.isDangerousForMyBase && value.isalive)
 			{
 				var curr:number = value.distanceFromMyBase;
 				if (min == null || min.distanceFromMyBase > curr)
@@ -199,7 +227,35 @@ while (true) {
 			}
 		})
 		if (min != null)
-			console.log(`MOVE ${min.x} ${min.y}`)
+		{
+			var enemyinbase:Entity[] = game.heroes.filter(element => element.type == element.TYPE_OTHER_HERO && element.distanceFromMyBase < 1500);
+			if (enemyinbase[0])
+				console.error("ENNEMIES DANS LA BASE !!");
+			if (min.distanceFromMyBase < 1500 && min.health > 4)
+			{
+				if (i == 2 && game.me.canCast)
+				{
+					console.log(`SPELL CONTROL ${min.id} ${game.enemy.basePosX} ${game.enemy.basePosY}`); continue;
+				}
+				else if (game.me.canCast)
+				{
+					console.log(`SPELL WIND 8000 4000`);  continue;
+				}
+			}
+			else if (min.distanceFromMyBase < 2000 && min.health > 6)
+			{
+				if (i == 1 && game.me.canCast)
+				{
+					console.log(`SPELL WIND 8000 4000`);  continue;
+				}
+				if (i == 0 || i == 2)
+				{
+					console.log(`MOVE ${min.x} ${min.y}`); continue;
+				}
+			}
+			console.log(`MOVE ${min.x} ${min.y}`); continue;
+
+		}
 		else
 			game.idle(i);
 			// console.log("WAIT");
